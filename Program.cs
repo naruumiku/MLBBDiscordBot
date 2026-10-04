@@ -6,8 +6,8 @@ class Program
 {
     static DiscordSocketClient client = null!;
 
-    static string discordServerId = "YOUR_NEW_SERVER_ID";
-    static string verifiedRoleId = "YOUR_VERIFIED_ROLE_ID";
+    static string discordServerId = "1311354688821792768";
+    static string verifiedRoleId = "1311364927461527624";
 
     static string databaseFile = "verified_accounts.json";
 
