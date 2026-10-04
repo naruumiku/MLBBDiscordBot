@@ -6,8 +6,8 @@ class Program
 {
     static DiscordSocketClient client = null!;
 
-    static string discordServerId = "1371759858214506537";
-    static string verifiedRoleId = "1556149386789130240";
+    static string discordServerId = "1311354688821792768";
+    static string verifiedRoleId = "1311364927461527624";
 
     static async Task Main()
     {
