@@ -6,8 +6,10 @@ class Program
 {
     static DiscordSocketClient client = null!;
 
-    static string discordServerId = "1311354688821792768";
-    static string verifiedRoleId = "1311364927461527624";
+    static string discordServerId = "YOUR_NEW_SERVER_ID";
+    static string verifiedRoleId = "YOUR_VERIFIED_ROLE_ID";
+
+    static string databaseFile = "verified_accounts.json";
 
     static async Task Main()
     {
@@ -48,7 +50,7 @@ class Program
             return;
         }
 
-        var command = new SlashCommandBuilder()
+        var verifyCommand = new SlashCommandBuilder()
             .WithName("verify")
             .WithDescription("Verify a member's Mobile Legends account")
             .AddOption(
@@ -70,9 +72,21 @@ class Program
                     .WithType(ApplicationCommandOptionType.String)
                     .WithRequired(true));
 
-        await guild.CreateApplicationCommandAsync(command.Build());
+        var unverifyCommand = new SlashCommandBuilder()
+            .WithName("unverify")
+            .WithDescription("Remove a member's Mobile Legends verification")
+            .AddOption(
+                new SlashCommandOptionBuilder()
+                    .WithName("member")
+                    .WithDescription("The member you want to unverify")
+                    .WithType(ApplicationCommandOptionType.User)
+                    .WithRequired(true));
+
+        await guild.CreateApplicationCommandAsync(verifyCommand.Build());
+        await guild.CreateApplicationCommandAsync(unverifyCommand.Build());
 
         Console.WriteLine("/verify command registered!");
+        Console.WriteLine("/unverify command registered!");
     }
 
     static async Task HandleInteraction(SocketInteraction interaction)
@@ -82,6 +96,11 @@ class Program
             if (command.Data.Name == "verify")
             {
                 await VerifyMLBB(command);
+            }
+
+            if (command.Data.Name == "unverify")
+            {
+                await UnverifyMLBB(command);
             }
         }
     }
@@ -125,6 +144,31 @@ class Program
             string serverZoneId = command.Data.Options
                 .First(x => x.Name == "server_id")
                 .Value.ToString()!;
+
+            List<VerifiedAccount> accounts = LoadAccounts();
+
+            VerifiedAccount? existingAccount = accounts.FirstOrDefault(
+                x => x.MlbbId == mlbbId &&
+                     x.ServerId == serverZoneId
+            );
+
+            if (existingAccount != null)
+            {
+                if (existingAccount.DiscordUserId == targetMember.Id.ToString())
+                {
+                    await command.FollowupAsync(
+                        "❌ This member is already verified with this MLBB account."
+                    );
+
+                    return;
+                }
+
+                await command.FollowupAsync(
+                    "❌ This MLBB account is already linked to another Discord member."
+                );
+
+                return;
+            }
 
             string apiUrl =
                 $"https://api.isan.eu.org/nickname/ml?id={Uri.EscapeDataString(mlbbId)}&server={Uri.EscapeDataString(serverZoneId)}";
@@ -189,12 +233,23 @@ class Program
                 properties.Nickname = ign;
             });
 
+            VerifiedAccount newAccount = new VerifiedAccount
+            {
+                MlbbId = mlbbId,
+                ServerId = serverZoneId,
+                Ign = ign,
+                DiscordUserId = targetMember.Id.ToString()
+            };
+
+            accounts.Add(newAccount);
+
+            SaveAccounts(accounts);
+
             await command.FollowupAsync(
                 $"✅ Verification successful!\n\n" +
                 $"Member: {targetMember.Mention}\n" +
                 $"MLBB IGN: **{ign}**\n" +
-                $"Verified role: **Added**\n" +
-                $"Nickname: **{ign}**"
+                $"Role Assigned: **Verified**"
             );
         }
         catch (HttpRequestException)
@@ -220,10 +275,158 @@ class Program
         }
     }
 
+    static async Task UnverifyMLBB(SocketSlashCommand command)
+    {
+        await command.DeferAsync();
+
+        try
+        {
+            ulong serverId = ulong.Parse(discordServerId);
+
+            SocketGuild? guild = client.GetGuild(serverId);
+
+            if (guild == null)
+            {
+                await command.FollowupAsync(
+                    "❌ Discord server could not be found."
+                );
+
+                return;
+            }
+
+            SocketGuildUser? targetMember = command.Data.Options
+                .First(x => x.Name == "member")
+                .Value as SocketGuildUser;
+
+            if (targetMember == null)
+            {
+                await command.FollowupAsync(
+                    "❌ The selected member could not be found."
+                );
+
+                return;
+            }
+
+            List<VerifiedAccount> accounts = LoadAccounts();
+
+            VerifiedAccount? existingAccount = accounts.FirstOrDefault(
+                x => x.DiscordUserId == targetMember.Id.ToString()
+            );
+
+            if (existingAccount == null)
+            {
+                await command.FollowupAsync(
+                    "❌ This member does not have a verified MLBB account."
+                );
+
+                return;
+            }
+
+            ulong roleId = ulong.Parse(verifiedRoleId);
+
+            SocketRole? role = guild.GetRole(roleId);
+
+            if (role == null)
+            {
+                await command.FollowupAsync(
+                    "❌ The Verified role could not be found."
+                );
+
+                return;
+            }
+
+            if (role.Position >= guild.CurrentUser.Hierarchy)
+            {
+                await command.FollowupAsync(
+                    "❌ I cannot remove the Verified role because my bot role is not above the Verified role."
+                );
+
+                return;
+            }
+
+            if (targetMember.Hierarchy >= guild.CurrentUser.Hierarchy)
+            {
+                await command.FollowupAsync(
+                    "❌ I cannot modify this member because their highest role is equal to or higher than my bot role."
+                );
+
+                return;
+            }
+
+            await targetMember.RemoveRoleAsync(role);
+
+            await targetMember.ModifyAsync(properties =>
+            {
+                properties.Nickname = null;
+            });
+
+            accounts.Remove(existingAccount);
+
+            SaveAccounts(accounts);
+
+            await command.FollowupAsync(
+                $"✅ Unverification successful!\n\n" +
+                $"Member: {targetMember.Mention}\n" +
+                $"MLBB IGN: **{existingAccount.Ign}**\n" +
+                $"Binding: **Removed**\n" +
+                $"Role Assigned: **Removed**"
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("ERROR:");
+            Console.WriteLine(ex);
+
+            await command.FollowupAsync(
+                "❌ Something went wrong while unverifying the member."
+            );
+        }
+    }
+
+    static List<VerifiedAccount> LoadAccounts()
+    {
+        if (!File.Exists(databaseFile))
+        {
+            return new List<VerifiedAccount>();
+        }
+
+        try
+        {
+            string json = File.ReadAllText(databaseFile);
+
+            return JsonSerializer.Deserialize<List<VerifiedAccount>>(json)
+                   ?? new List<VerifiedAccount>();
+        }
+        catch
+        {
+            return new List<VerifiedAccount>();
+        }
+    }
+
+    static void SaveAccounts(List<VerifiedAccount> accounts)
+    {
+        JsonSerializerOptions options = new JsonSerializerOptions
+        {
+            WriteIndented = true
+        };
+
+        string json = JsonSerializer.Serialize(accounts, options);
+
+        File.WriteAllText(databaseFile, json);
+    }
+
     static Task Log(LogMessage message)
     {
         Console.WriteLine(message.ToString());
 
         return Task.CompletedTask;
     }
+}
+
+class VerifiedAccount
+{
+    public string MlbbId { get; set; } = "";
+    public string ServerId { get; set; } = "";
+    public string Ign { get; set; } = "";
+    public string DiscordUserId { get; set; } = "";
 }
