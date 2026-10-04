@@ -249,7 +249,7 @@ class Program
                 $"✅ Verification successful!\n\n" +
                 $"Member: {targetMember.Mention}\n" +
                 $"MLBB IGN: **{ign}**\n" +
-                $"Role Assigned: **Verified**"
+                $"Role Assigned: **Friend**"
             );
         }
         catch (HttpRequestException)
@@ -329,7 +329,7 @@ class Program
             if (role == null)
             {
                 await command.FollowupAsync(
-                    "❌ The Verified role could not be found."
+                    "❌ The Friend role could not be found."
                 );
 
                 return;
@@ -338,7 +338,7 @@ class Program
             if (role.Position >= guild.CurrentUser.Hierarchy)
             {
                 await command.FollowupAsync(
-                    "❌ I cannot remove the Verified role because my bot role is not above the Verified role."
+                    "❌ I cannot remove the Friend role because my bot role is not above the Friend role."
                 );
 
                 return;
@@ -368,8 +368,7 @@ class Program
                 $"✅ Unverification successful!\n\n" +
                 $"Member: {targetMember.Mention}\n" +
                 $"MLBB IGN: **{existingAccount.Ign}**\n" +
-                $"Binding: **Removed**\n" +
-                $"Role Assigned: **Removed**"
+                $"Role Removed: **Friend**"
             );
         }
         catch (Exception ex)
